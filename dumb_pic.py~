@@ -337,8 +337,8 @@ for run, src in enumerate(cat_srcs):
             # first the real image
             axlist.append(plt.subplot(gs[no, 0]))
 #            axlist[no * 3].set_axis_off()
-            axlist[no * 3].set_xticks([])
-            axlist[no * 3].set_yticks([])
+            ax.set_xticks([])
+            ax.set_yticks([])
             if no == 0:
                 axlist[0].set_title(r"Data")
             axlist[no * 3].imshow(starr, cmap=plt.cm.gray, interpolation="nearest", vmin=toe, vmax=head)
@@ -365,8 +365,8 @@ for run, src in enumerate(cat_srcs):
 
             axlist.append(plt.subplot(gs[no, 1]))
 #            axlist[no * 3 + 1].set_axis_off()
-            axlist[no * 3 + 1].set_xticks([])
-            axlist[no * 3 + 1].set_yticks([])
+            ax.set_xticks([])
+            ax.set_yticks([])
             if no == 0:
                 axlist[1].set_title(r"Model")
             axlist[no * 3 + 1].imshow(bestsky, cmap=plt.cm.gray,
@@ -381,8 +381,8 @@ for run, src in enumerate(cat_srcs):
             print chew
             axlist.append(plt.subplot(gs[no, 2]))
 #            axlist[no * 3 + 2].set_axis_off()
-            axlist[no * 3 + 2].set_xticks([])
-            axlist[no * 3 + 2].set_yticks([])
+            ax.set_xticks([])
+            ax.set_yticks([])
             if no == 0:
                 axlist[2].set_title(r"Chi Image")
             axlist[no * 3 + 2].imshow(chimg, cmap=plt.cm.gray, interpolation="nearest",
