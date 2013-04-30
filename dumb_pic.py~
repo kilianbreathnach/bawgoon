@@ -13,9 +13,7 @@ import pyfits
 import tractor
 import tractor.sdss_galaxy as sdss
 from astrometry.util.util import Tan
-from scipy.optimize import curve_fit as cf
 from scipy.optimize import leastsq as lsq
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import rc
 rc('font', **{'family':'sans-serif','sans-serif':['Helvetica']})
 ## for Palatino and other serif fonts use:
@@ -31,6 +29,7 @@ sq = 15
 
 
 webname = "/home/kilian/public_html/exp_req/ciorcal-15"
+
 
 class Logger(object):
     def __init__(self, filename, err_type):
@@ -78,7 +77,7 @@ def sky_mod(params, base):
     for i in range(sq):
         for j in range(sq):
             #dy = np.abs(j - 12)
-            sky[i][j] += i * mh + j * mv  #dx * mh + dy * mv
+            sky[i][j] += i * mh + j * mv  # dx * mh + dy * mv
 
     return sky
 
@@ -180,7 +179,7 @@ def roam_ciorc(params, base):
     sky = base.reshape(sq, sq) * z0
     q = 0.5 / var
     w = np.abs(w)
-    gauss = ((q * w) / np.pi)* np.ones((sq, sq))
+    gauss = ((q * w) / np.pi) * np.ones((sq, sq))
 
     for i in range(sq):
         ipart = np.exp(-q * (i - x) ** 2)
@@ -197,8 +196,12 @@ def chi_img(data, model, sig):
 
 
 def chisq_calc(data, model, sig):
-    blarp = (data - model) ** 2
-    return np.sum(blarp) / sig ** 2
+    diff = data - model
+    maxchi = np.max(diff) / sig
+    minchi = np.min(diff) / sig
+    diffsq = diff ** 2
+    maxchisq = np.max(diffsq) / sig ** 2
+    return minchi, maxchi, maxchisq, np.sum(diffsq) / sig ** 2
 
 wcsfile = "/data2/nova/BACKUP-jobs/00000046/wcs.fits"
 
@@ -231,7 +234,9 @@ pic = picture[:, :, 0].astype("float64")
 
 stdev = MAGIC_NO * MAD(pic)
 
-print "dimensions are ", pic.shape
+dim = pic.shape
+
+print "dimensions are ", dim
 
 ext = 0
 wcs = tractor.FitsWcs(Tan(wcsfile, ext))
@@ -261,20 +266,19 @@ for run, src in enumerate(cat_srcs):
     src_xy = np.asarray(wcs.wcs.radec2pixelxy(ra, dec))
     print src_xy
 
-    centre = np.rint(src_xy).astype("int")
+    cent = np.rint(src_xy).astype("int")
     print "centre:"
-    print centre[0]
-    print centre[1]
+    print cent[0]
+    print cent[1]
 
-    if centre[0] < 0 or centre[1] < 0:
+    if cent[0] < 0 or cent[0] >= dim[1] or cent[1] < 0 or cent[1] >= dim[0]:
         print "rdls not correct, out of image"
         continue
 
      # let's just switch the centre values and see...
-    starr = pic[centre[1] - 7:centre[1] + 8, centre[0] - 7:centre[0] + 8]
+    starr = pic[cent[1] - 7:cent[1] + 8, cent[0] - 7:cent[0] + 8]
 
     print "starr is  ", starr.shape
-
 
     if starr.shape == (sq, sq):
 
@@ -286,8 +290,6 @@ for run, src in enumerate(cat_srcs):
         print "max of starr: ", peak
         """guess where gaussian is centred"""
         x0, y0 = (float(pos[0]) for pos in np.where(starr == peak))
-
-        xdata = np.ones(225)
 
         """
         Define plotstuff object
@@ -302,7 +304,7 @@ for run, src in enumerate(cat_srcs):
         ciorc = colxns.namedtuple("ciorc", "z0 mh mv w var")
         rokirk = colxns.namedtuple("rokirk", "z0 mh mv w var x y")
 
-        x0, y0 = centre[0], centre[1]   # try with the centre this time
+        x0, y0 = 7., 7.   # try with the centre this time
 
         kwargs1 = dict(z0=med, mh=0., mv=0.)
         kwargs2 = dict(kwargs1, w=(peak - med), var=3.)
@@ -319,29 +321,36 @@ for run, src in enumerate(cat_srcs):
         stuff[1].tup, stuff[1].kws, stuff[1].fun = ciorc, kwargs2, ciorcal
         stuff[2].tup, stuff[2].kws, stuff[2].fun = rokirk, kwargs3, roam_ciorc
 
-
         # and start up the figure for plotting
+
         fig = plt.figure()
+        gs = gridspec.GridSpec(3, 3)
         axlist = []
 
+        head = np.percentile(starr, 99.9)
+        toe = np.percentile(starr, 0.1)
 
         for no, plst in enumerate(stuff):
             """
             and here we do the fitting and plotting, one row for each model
             """
-            gs = gridspec.GridSpec(3, 3)
 
-            head = np.percentile(starr, 99.9)
-            toe = np.percentile(starr, 0.1)
+            if no == 0:
+                print "SKY ONLY"
+            elif no == 1:
+                print "SKY + PSF"
+            elif no == 2:
+                print "ROAMING PSF"
 
             # first the real image
             axlist.append(plt.subplot(gs[no, 0]))
 #            axlist[no * 3].set_axis_off()
-            ax.set_xticks([])
-            ax.set_yticks([])
+            axlist[no * 3].set_xticks([])
+            axlist[no * 3].set_yticks([])
             if no == 0:
                 axlist[0].set_title(r"Data")
-            axlist[no * 3].imshow(starr, cmap=plt.cm.gray, interpolation="nearest", vmin=toe, vmax=head)
+            axlist[no * 3].imshow(starr, cmap=plt.cm.gray,
+                                  interpolation="nearest", vmin=toe, vmax=head)
 
             if no == 0:
                 axlist[0].set_ylabel(r"sky only")
@@ -352,6 +361,7 @@ for run, src in enumerate(cat_srcs):
 
             # now fit and plot the model
             param_guess = plst.tup(**plst.kws)
+            xdata = np.ones(225)
 
             result = lsq(residuals, param_guess, args=(plst.fun, xdata,
                 starr))
@@ -359,37 +369,48 @@ for run, src in enumerate(cat_srcs):
             solve_params = result[0]
             soln = plst.tup(*solve_params)
             print "optimal params are: ", soln
+            xdata = np.ones(225)
             bestsky = plst.fun(soln, xdata)
-            print "best fit model:"
-            print bestsky
+
+            if no == 1:
+                """
+                For the roaming psf, let's initialise with solve from static.
+                """
+                stuff[2].kws['z0'] = soln.z0
+                stuff[2].kws['mh'] = soln.mh
+                stuff[2].kws['mv'] = soln.mv
+                stuff[2].kws['w'] = soln.w
+                stuff[2].kws['var'] = soln.var
 
             axlist.append(plt.subplot(gs[no, 1]))
 #            axlist[no * 3 + 1].set_axis_off()
-            ax.set_xticks([])
-            ax.set_yticks([])
+            axlist[no * 3 + 1].set_xticks([])
+            axlist[no * 3 + 1].set_yticks([])
             if no == 0:
                 axlist[1].set_title(r"Model")
             axlist[no * 3 + 1].imshow(bestsky, cmap=plt.cm.gray,
-                    interpolation="nearest", vmin=toe, vmax=head)
+                                      interpolation="nearest",
+                                      vmin=toe, vmax=head)
 
             # and finally the chi image
             chimg = chi_img(starr, bestsky, stdev)
-            print "chi image:"
-            print chimg
-            chival = chisq_calc(starr, bestsky, stdev)
-            chew = str(chival)
-            print chew
+            minchi, maxchi, maxchisq, totchisq = chisq_calc(starr, bestsky, stdev)
+            print "min(chi) is ", minchi
+            print "max(chi) is ", maxchi
+            print "max(chi ** 2) is ", maxchisq
+            print "total(chi ** 2) is ", totchisq
             axlist.append(plt.subplot(gs[no, 2]))
 #            axlist[no * 3 + 2].set_axis_off()
-            ax.set_xticks([])
-            ax.set_yticks([])
+            axlist[no * 3 + 2].set_xticks([])
+            axlist[no * 3 + 2].set_yticks([])
             if no == 0:
                 axlist[2].set_title(r"Chi Image")
-            axlist[no * 3 + 2].imshow(chimg, cmap=plt.cm.gray, interpolation="nearest",
-                    vmin=(-5 * stdev), vmax=(5 * stdev))
+            axlist[no * 3 + 2].imshow(chimg, cmap=plt.cm.gray,
+                                      interpolation="nearest",
+                                      vmin=-5., vmax=5.)
 
             axlist[no * 3 + 2].yaxis.set_label_position("right")
-            axlist[no * 3 + 2].set_ylabel(r"$\chi^{2} = %s$" % chew)
+            axlist[no * 3 + 2].set_ylabel(r"$\chi^{2} = %s$" % str(totchisq))
 
 #        for ax in axlist:
 #            for t in ax.xaxis.get_ticklines():
